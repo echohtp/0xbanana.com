@@ -1,0 +1,40 @@
+import { ArticleLayout } from '@/components/ArticleLayout'
+
+export const meta = {
+  author: 'Jason Schorr',
+  date: '2019-11-06',
+  title: 'Deploy a Censorship Resistant Website for FREE 🔓🌎',
+  description:
+    "I believe in a free and open internet and to help keep it that we're going to learn how to deploy a censorship resistant static website in just a few minutes with a few free tools.",
+}
+
+export default (props) => <ArticleLayout meta={meta} {...props} />
+
+>Internet censorship is the control or suppression of what can be accessed, published, or viewed on the Internet.
+
+I believe in a free and open internet and to help keep it that we're going to learn how to deploy a censorship resistant static website in just a few minutes with a few free tools.
+
+To achieve censorship resistance we're going to use IPFS ([Interplanetary File System](https://docs.ipfs.io/introduction/overview/)) a distributed system for storing and accessing files, websites, and data.
+
+You can run your own IPFS node to increase the strength of the network and store your own files but for this tutorial we're going to use a free service to manage our content and more importantly manage our pinned content. 
+
+IPFS nodes treat the data they store like a cache, meaning that there is no guarantee that the data will continue to be stored. Pinning tells an IPFS server that the data is important and mustn’t be thrown away.
+
+I'm a fan of using [https://pinata.cloud](https://pinata.cloud), once you've made an account, select upload and you'll be presented with something like below. 
+
+![pinata.cloud upload interface](https://i.imgur.com/M8x1IfM.png)
+
+Notice "Upload Directory" is selected and "Preserve directory name" is not checked. Select the directory of your site contents and upload them. Once uploaded, select "Pin Explorer" from the nav menu.
+
+![pinata.cloud pins interface](https://thepracticaldev.s3.amazonaws.com/i/lo82jw65992sefz1hb59.png)
+
+Using the hash provided by IPFS, we now have the address of our deployed directory. In the case of the screenshot above my content is stored at hash `QmdFWa8PEruGXistCu8MFRwb2bncH2xAYx34nYqEBaxaVk`. Using a public IPFS gateway we can see the content at the hash address. Here is a list of [public gateways](https://ipfs.github.io/public-gateway-checker/) and their status'.
+
+https://ipfs.io/ipfs/QmdFWa8PEruGXistCu8MFRwb2bncH2xAYx34nYqEBaxaVk/
+
+![Screenshot of website hosted on ipfs](https://i.imgur.com/ypB4R5Y.png)
+
+It may take a few minutes for the data to propagate through the network but you now have a censorship resistant website! 
+
+---
+Enjoyed the post? Let me know! 💛🦄🔖

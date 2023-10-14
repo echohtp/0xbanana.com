@@ -1,0 +1,195 @@
+import { ArticleLayout } from '@/components/ArticleLayout'
+
+export const meta = {
+  author: 'Jason Schorr',
+  date: '2020-08-15',
+  title: 'Automating Deploys with Bash scripting and Google Cloud SDK',
+  description:
+    'You don’t have to know terraform, ansible, chef, puppet, or any other Infrastructure-as-Code (IAC) tools to automate your deployments on Google Cloud Platform.',
+}
+
+export default (props) => <ArticleLayout meta={meta} {...props} />
+
+You don’t have to know terraform, ansible, chef, puppet, or any other Infrastructure-as-Code (IAC) tools to automate your deployments on Google Cloud Platform. 
+
+Google offers a several command line tools in their [Software Development Kit (SDK)](https://cloud.google.com/sdk) that can be used to create/destroy resources, interact with storage buckets, create firewall rules and more; you can automate your entire deployment! 
+
+Having a solid understanding of the SDK tools will pay dividends in your career and they’re a requirement for every GCP certificate; Its very beneficial to spend some time getting comfortable with them.
+
+This isn’t a tutorial on how to use gcloud so if you’re generally unfamiliar with the tool, please see the resources below to fill in any knowledge gaps.
+
+[gcloud command-line tool overview  | Cloud SDK Documentation](https://cloud.google.com/sdk/gcloud)
+[gcloud Cheat Sheet  |  Cloud SDK Documentation](https://cloud.google.com/sdk/docs/images/gcloud-cheat-sheet.pdf)
+
+To automate calling multiple gcloud commands to build our infrastructure I’m going to use BASH scripting.  If you’re unfamiliar with BASH scripting,  here’s a TLDR;
+
+> Shell commands listed in a file that get executed in sequence
+
+Let’s look at a small deploy script.
+
+`create_instance.sh`
+```
+#!/bin/bash
+
+ZONE="us-east1-a"
+
+echo "Welcome to our tiny script - lets create an instance"
+gcloud compute instances create instance-1 --zone $ZONE
+
+echo "Done!
+```
+
+This script gives us some console output to let us know its running, creates an instance named `instance-1` in the zone defined by the variable `ZONE` in this case, `us-east1-a`.
+
+With this concept we can expand it to larger more complicated deployments; and the same can be used to teardown infrastructure in an expedient programatic fashion.
+
+To ensure our systems are properly configured once created in the cloud, we’re going to use another feature offered to us by GCP, a “startup script”. A startup script is a script that is executed once the system is created and spins up for the first time.  We can configure a startup script to run a few different ways:
+
+1. A remote file stored on a public server
+2. A file stored in a google cloud bucket
+3. Inlined into our deploy script
+
+An example below shows us setting metadata key value pair in the gcloud command to pull a file from a remote server
+
+`gcloud compute instances create instance-1 —metadata startup-script-url=https://server.com/script.sh`
+
+```
+script.sh
+
+# Update and install packages
+sudo apt-get update
+sudo apt-get install git build-essential apache2 -y
+
+# Update index.html page
+echo "<html><body><h1>We're live!</h1></body></html>" > /var/www/html/index.html
+
+echo "DONE!"
+```
+
+Our script is located on a remote (public) server, pulled down, executed, and our custom server is up and running!
+
+This overview should give you some new insight into the power of automating network creation and system bootstrapping. 
+
+Taking the idea to the next level, I wanted to have deployment scripts for various use cases ready at my disposal when needed. One of those that I want to walk through with you today is a simple forensics laboratory. A place where files could be dissected, malware stored, and segmented from my personal and work equipment.
+
+Here are my requirements
+
+1. Forensics workstation
+2. Kali Linux workstation
+3. Honey pot 
+	* Segmented from other workstations
+4. Bucket for malware and potential bad stuff
+
+A small artistic endeavor later this is the network diagram I’ve come up with.
+
+![architecture screenshot](https://i.imgur.com/EjRFxqD.png)
+
+This network diagram gives us more insight into how we want our resources are structured and grouped, let’s build out our design documentation more.
+
+A VPC that contains two subnets, safe / unsafe. Safe will contain our instances used for analysis and tooling, tagged with “admin” for firewall rules that allow ingress on 22, 80, 443 and icmp (ping). 
+
+Unsafe subnet will contain one host, a honeypot, and tagged “insecure” for firewall rules to allow connections on all ports and protocols only for hosts with the appropriate tag. 
+
+Not directly an object that will live in our VPC but we’ll also have a Cloud Bucket for storage of any analysis files or reports; this resource will be a project level resource.
+
+With these design considerations in mind and using the console UI to help us create `gcloud` commands we end up with the following deployment script (note: for blog post clarity startup scripts are inlined)
+
+```
+#!/bin/bash
+
+echo "Create VPC and subnets"
+gcloud compute networks create lab-net  --subnet-mode=custom --bgp-routing-mode=regional
+
+gcloud compute networks subnets create safe  --range=192.168.0.0/24 --network=lab-net --region=us-east1
+
+gcloud compute networks subnets create unsafe --range=192.168.128.0/29 --network=lab-net --region=us-east1
+
+echo "Creating SIFT instance"
+gcloud compute instances create sift-1 --tags=admin \
+  --metadata startup-script='
+  #! /bin/bash
+  sudo su -
+  apt-get update
+  # TO DO: Install SIFT
+  EOF'
+
+echo "Creating Kali instance"
+gcloud compute instances create kali-1 --tags=admin \
+  --metadata startup-script='
+  #! /bin/bash
+  sudo su -
+  apt-get update
+  # TO DO: Install KALI Tools
+  EOF'
+
+echo "Creating Honeypot instance"
+gcloud compute instances create honeypot-1 --tags=insecure \
+  --metadata startup-script='
+  #! /bin/bash
+  sudo su -
+  apt-get update
+  # TO DO: Install Honeypots
+  EOF'
+
+echo "Create Bucket for storage"
+gsutil mb gs://bucket-of-bad-stuff
+
+echo "Adding firewall rules"
+
+gcloud compute firewall-rules create allow-ingress-admin-lab-net --direction=INGRESS --priority=1000 --network=lab-net --action=ALLOW --rules=tcp:22,tcp:80,tcp:443,icmp --source-ranges=0.0.0.0/0 --target-tags=admin
+
+gcloud compute firewall-rules create allow-ingress-insecure-lab-net --direction=INGRESS --priority=1000 --network=lab-net --action=ALLOW --rules=all --source-ranges=0.0.0.0/0 --target-tags=insecure
+
+echo "Done"
+```
+
+I will leave script comprehension as an exercise to the reader! 
+
+For the lab to be complete there are still some missing pieces, none of the systems haven’t been configured and are still in their default state; which is going to be an effort for another day.
+
+Additionally, if our instances don’t have the need to persist for extended periods of time we can cut costs by using preemptible instances, something I talk about in [this](https://0xbanana.com/blog/cut-your-gcp-compute-costs-by-80-with-this-simple-tip-they-don-t-want-you-to-know/) blog post.
+
+Once we’ve collected all our samples, performed our exhaustive forensics analysis, written a detailed report, and shipped it off to our client, we can start to tear down our infrastructure.  This is something we can also automate with a small BASH script. 
+
+```
+#!/bin/bash
+
+echo "Deleting instances..."
+gcloud compute instances delete sift-1 -q
+gcloud compute instances delete kali-1 -q
+gcloud compute instances delete honeypot-1 -q
+
+echo "Removing bucket..."
+gsutil rm -r gs://bucket-of-bad-stuff
+
+echo "Removing firewall rules..."
+gcloud compute firewall-rules delete allow-ingress-admin-lab-net -q 
+gcloud compute firewall-rules delete allow-ingress-insecure-lab-net -q 
+
+echo "Removing subnets and network..."
+gcloud compute networks subnets delete unsafe -q
+gcloud compute networks subnets delete safe -q
+gcloud compute networks delete lab-net -q
+
+echo "Done"
+```
+
+Each resource can be referenced by name and deleted using the appropriate `gcloud` command module. The `-q` flag surpasses the “Are you sure?” Warning and runs the action.
+
+As a last action I was curious on how long it takes to setup and destroy this VPC I ran some not so scientific timing tests.
+
+ On average VPC and resource creation was completed in under 1m30s*
+```
+bash DEPLOY_FORENSICS_ENV.sh  7.95s user 1.65s system 11% cpu 1:22.75 total
+```
+*Note: Creation times do not take into account system setup time, if there are any startup scripts configured, your system may be instantiated but not fully ready for action.
+
+Destruction took longer.
+```
+bash DESTROY_FORENSICS_ENV.sh  7.81s user 1.69s system 7% cpu 2:10.41 total
+```
+
+These times will also vary based on things like: machine type,  if there are any shutdown scripts configured and disk size.  
+
+I hope this gives you an idea of what’s possible with automated deployments and that you’ll begin thinking about building your own disposable infrastructure to accomplish tasks rather than being tied down to owning a small fortunes worth of hardware. 
+
